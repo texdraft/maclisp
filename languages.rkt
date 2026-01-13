@@ -3,10 +3,15 @@
 ;;;; Nanopass languages
 
 (require nanopass/base
-         "read.rkt")
+         "read.rkt"
+         "symbol-info.rkt")
 
 (provide Surface
-         Namespaces)
+         Resolved
+         Lambda->Let
+         Conditionals
+         Listified
+         unparse-Conditionals)
 
 (define (any? x) #t)
 
@@ -17,7 +22,7 @@
              (List (lst))
              (srcloc (l))
              (String (string))
-             (Float (flonum))
+             (Float (float))
              (Integer (int))
              (Comment (comment)))
   (Program (p)
@@ -31,14 +36,16 @@
               (defmacro f (x ...) body l)
               x
               int
-              flonum
+              float
               string
+              (comment-form any)
               (defprop s any ss l)
               (sharp-percent any l)
               (sharp-dot e l)
               (setq [x e] ... l)
               (psetq [x e] ... l)
               (cond [e body] ... l)
+              (caseq e [lst body] ... l)
               (t l)
               (nil l)
               (nilp l) ; ()
@@ -76,8 +83,18 @@
               (signp s e l)
               (catch e0 e ... l)
               (throw e0 e1 l)
-              (declare d ... l)
-              (e0 e* ... l))
+              (declare e ... l)
+              (fixnum di ... l)
+              (flonum di ... l)
+              (notype di ... l)
+              (special x ... l)
+              (unspecial x ... l)
+              (expr f ... l)
+              (fexpr f ... l)
+              (lexpr f ... l)
+              (*lexpr f ... l)
+              (array l)
+              (apply e0 e* ... l))
   (Backquote-Expression (bqe)
                         (backquote bqe l)
                         (literal any l)
@@ -92,20 +109,7 @@
   ;; no locations because they don't exist
   (Body (body prog-body)
         (begin e ...)
-        (begin/prog ((maybe tag) e) ...))
-
-  (Declaration (d)
-               (fixnum di ... l)
-               (flonum di ... l)
-               (notype di ... l)
-               (special x ... l)
-               (unspecial x ... l)
-               (expr f ... l)
-               (fexpr f ... l)
-               (lexpr f ... l)
-               (*lexpr f ... l)
-               (array (s ad ...) ... l)
-               e)
+        (begin/prog (tag ...) ((maybe tag?) e) ...))
   (Array-Declaration (ad)
                      (fixed x any ... l)
                      (rank x any ... l))
@@ -113,42 +117,57 @@
                     (function f s ... l)
                     (variable x l)))
 
-(define-language Namespaces
+(define-language Resolved
   (extends Surface)
+  (terminals (- (Symbol (f x s ss tag)))
+             (+ (Symbol-Info (f x tag)))
+             (+ (Symbol (s ss))))
   (Expression (e)
-              (- x)
-              (- (setq [x e] ... l))
-              (- (psetq [x e] ... l))
-              (- (λ (x ...) body l))
-              (- (λ x body l))
-              (- (do x e0 e1 e2 prog-body l))
-              (- (do ([x (maybe e0) (maybe e1)] ...) (e body) prog-body l))
-              (- (do ([x (maybe e0) (maybe e1)] ...) () prog-body l))
-              (- (let ([x (maybe e)] ...) body l))
-              (- (let* ([x (maybe e)] ...) body l))
-              (- (pop x l))
-              (- (push e x l))
-              (- (prog (x ...) prog-body l))
-              (- (e0 e* ... l))
-              (+ v)
-              (+ (setq [v e] ... l))
-              (+ (psetq [v e] ... l))
-              (+ (λ (v ...) body l))
-              (+ (λ v body l))
-              (+ (do v e0 e1 e2 prog-body l))
-              (+ (do ([v (maybe e0) (maybe e1)] ...) (e body) prog-body l))
-              (+ (do ([v (maybe e0) (maybe e1)] ...) () prog-body l))
-              (+ (let ([v (maybe e)] ...) body l))
-              (+ (let* ([v (maybe e)] ...) body l))
-              (+ (pop v l))
-              (+ (push e v l))
-              (+ (prog (v ...) prog-body l))
-              (+ (call function e ... l))
-              (+ (apply e0 e ... l)))
-  (Function (function)
-            (+ (user f))
-            (+ (system f)))
-  (Variable (v)
-            (+ (local x l))
-            (+ (special x l))
-            (+ (unknown x l))))
+              (- (fexpr f ... l))
+              (+ (fexpr s ... l))))
+
+(define-language Lambda->Let
+  (extends Resolved)
+  (Expression (e)
+              (- (apply e0 e* ... l))
+              (+ (apply f e* ... l))))
+
+(define-language Conditionals
+  (extends Lambda->Let)
+  (Expression (e)
+              (+ (when e body))
+              (+ (unless e body))))
+
+(define-language Listified
+  (terminals (any (any))
+             (srcloc (l))
+             (Comment (comment)))
+  (Program (p)
+           (program files ...))
+  (File (files)
+        (file (tree ...) (comment ...)))
+  (Tree (tree)
+        (atom any)
+        (list tree ... (maybe l))
+        (prefix any tree)
+        (tagged any tree)
+        (align [tree l] ...)
+        (indent tree)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

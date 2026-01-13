@@ -70,6 +70,11 @@
               (,comments ...))])))
 
 (define (parse-expression e)
+  (define (parse-declaration-item di)
+    (with-output-language (Surface Declaration-Item)
+      (match di
+        [(Symbol _ l) `(variable ,di ,l)]
+        [(LIST (f s ...) l) `(function ,f ,s ... ,l)])))
   (with-output-language (Surface Expression)
     (match e
       [(or (Symbol _ _)
@@ -81,7 +86,10 @@
       [(Sharp-Quote datum l) `(function ,(parse-expression datum) ,l)]
       [(Sharp-Dot datum l) `(sharp-dot ,(parse-expression datum) ,l)]
       [(Sharp-Percent datum l) `(sharp-percent ,datum ,l)]
-      [(Quote datum l) `(quote ,datum ,l)]
+      [(Quote (and datum (LIST ((S "LAMBDA") _ ...))) l)
+       (parse-expression datum)]
+      [(Quote datum l)
+       `(quote ,datum ,l)]
       [(LIST ((S "DEFUN") name (S "FEXPR") (LIST (arguments ...)) body ...) l)
        `(defun ,name ,'fexpr (,arguments ...) ,(parse-progn body) ,l)]
       [(LIST ((S "DEFUN") name (S "MACRO") (LIST (arguments ...)) body ...) l)
@@ -146,6 +154,7 @@
       [(LIST ((S "OR") es ...) l)
        `(∨ ,(map parse-expression es) ... ,l)]
       [(LIST ((S "QUOTE") x) l)
+       (pretty-print x)
        `(quote ,x ,l)]
       [(Backquote datum l)
        `(backquote ,(parse-backquote datum) ,l)]
@@ -189,9 +198,35 @@
       [(LIST ((S "THROW") e) l)
        `(throw (nil ,l) ,(parse-expression e) ,l)]
       [(LIST ((S "DECLARE") ds ...) l)
-       `(declare ,(map parse-declaration ds) ... ,l)]
+       `(declare ,(map parse-expression ds) ... ,l)]
+      [(LIST ((S "COMMENT") x ...) l)
+       `(comment-form ,x)]
+      [(LIST ((S "CASEQ") e clauses ...) l)
+       (parse-caseq (parse-expression e) clauses l)]
+      [(LIST ((S "FIXNUM") di ...) l)
+       `(fixnum ,(map parse-declaration-item di) ... ,l)]
+      [(LIST ((S "FLONUNM") di ...) l)
+       `(flonum ,(map parse-declaration-item di) ... ,l)]
+      [(LIST ((S "NOTYPE") di ...) l)
+       `(notype ,(map parse-declaration-item di) ... ,l)]
+      [(LIST ((S "SPECIAL") xs ...) l)
+       `(special ,xs ... ,l)]
+      [(LIST ((S "UNSPECIAL") xs ...) l)
+       `(unspecial ,xs ... ,l)]
+      [(LIST ((S "*EXPR") fs ...) l)
+       `(expr ,fs ... ,l)]
+      [(LIST ((S "*FEXPR") fs ...) l)
+       `(fexpr ,fs ... ,l)]
+      [(LIST ((S "*LEXPR") fs ...) l)
+       `(lexpr ,fs ... ,l)]
+      [(LIST ((S "**LEXPR") fs ...) l)
+       `(*lexpr ,fs ... ,l)]
+      [(LIST ((S "*ARRAY") ads ...) l)
+       `(array ,l)]
+      [(LIST ((S "ARRAY*") ads ...) l)
+       `(array ,l)]
       [(LIST (f a ...) l)
-       `(,(parse-expression f) ,(map parse-expression a) ... ,l)])))
+       `(apply ,(parse-expression f) ,(map parse-expression a) ... ,l)])))
 
 ;; Parse symbol/expression pairs as in setq or psetq
 (define (parse-pairs pairs)
@@ -249,7 +284,8 @@
              [statements (list)]
              [rest prog-body]
              #:result (with-output-language (Surface Body)
-                        `(begin/prog (,(reverse tags) ,(reverse statements)) ...)))
+                        `(begin/prog (,(filter identity tags) ...)
+                                     (,(reverse tags) ,(reverse statements)) ...)))
             ()
     #:break (null? rest)
     (match rest
@@ -300,38 +336,16 @@
       [(Comma-Dot e l) `(comma-dot ,(parse-expression e) ,l)]
       [(Comma-At e l) `(comma-at ,(parse-expression e) ,l)])))
 
-(define (parse-declaration d)
-  (define (parse-declaration-item di)
-    (with-output-language (Surface Declaration-Item)
-      (match di
-        [(Symbol _ l) `(variable ,di ,l)]
-        [(LIST (f s ...) l) `(function ,f ,s ... ,l)])))
-  (with-output-language (Surface Declaration)
-    (match d
-      [(LIST ((S "FIXNUM") di ...) l)
-       `(fixnum ,(map parse-declaration-item di) ... ,l)]
-      [(LIST ((S "FLONUNM") di ...) l)
-       `(flonum ,(map parse-declaration-item di) ... ,l)]
-      [(LIST ((S "NOTYPE") di ...) l)
-       `(notype ,(map parse-declaration-item di) ... ,l)]
-      [(LIST ((S "SPECIAL") xs ...) l)
-       `(special ,xs ... ,l)]
-      [(LIST ((S "UNSPECIAL") xs ...) l)
-       `(unspecial ,xs ... ,l)]
-      [(LIST ((S "*EXPR") fs ...) l)
-       `(expr ,fs ... ,l)]
-      [(LIST ((S "*FEXPR") fs ...) l)
-       `(fexpr ,fs ... ,l)]
-      [(LIST ((S "*LEXPR") fs ...) l)
-       `(lexpr ,fs ... ,l)]
-      [(LIST ((S "**LEXPR") fs ...) l)
-       `(*lexpr ,fs ... ,l)]
-      [(LIST ((S "*ARRAY") ads ...) l)
-       `(array () ,l)]
-      [_
-       (parse-expression d)])))
-
-
-
-
-
+(define (parse-caseq e clauses l)
+  (for/foldr ([lists (list)]
+              [bodies (list)]
+              #:result (with-output-language (Surface Expression)
+                         `(caseq ,e [,lists ,bodies] ... ,l)))
+             ([clause (in-list clauses)])
+    (match clause
+      [(LIST ((and lst (LIST _)) body ...))
+       (values (cons lst lists)
+               (cons (parse-progn body) bodies))]
+      [(LIST (atom body ...) l)
+       (values (cons (List (list atom) #f) lists)
+               (cons (parse-progn body) bodies))])))

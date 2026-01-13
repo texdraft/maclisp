@@ -31,7 +31,41 @@
          (struct-out Sharp-Minus)
          (struct-out Character)
          read-ncomplr
-         obarray)
+         obarray
+         unparse)
+
+(define (unparse x)
+  (match x
+    [(List content _)
+     (map unparse content)]
+    [(Dotted-List content _)
+     (define-values (butlast last) (split-at-right (map unparse content) 1))
+     (foldr cons (first last) butlast)]
+    [(Quote datum _)
+     (list 'quote (unparse datum))]
+    [(Symbol name _)
+     (string->symbol (string-downcase name))]
+    [(Integer _ value _)
+     value]
+    [(Float content _)
+     content]
+    [(String text _)
+     text]
+    [(Comma datum _)
+     (list 'unquote (unparse datum))]
+    [(Comma-At datum _)
+     (list 'unquote-splicing (unparse datum))]
+    [(Comma-Dot datum _)
+     (list 'unquote-splicing (unparse datum))]
+    [(Sharp-Dot x _)
+     (list 'SHARP-DOT (unparse x))]
+    [(Sharp-Percent x _)
+     (list 'SHARP-PERCENT (unparse x))]
+    [(Sharp-Quote x _)
+     (list 'SHARP-Quote (unparse x))]
+    [(Backquote x _)
+     (list 'quasiquote (unparse x))]
+    [_ x]))
 
 ;; The global table of symbol names, mapping their internal, Lisp form
 ;; (uppercase with slashes removed) to their external form.

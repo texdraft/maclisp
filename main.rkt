@@ -1,6 +1,11 @@
 #lang racket
 
 (require "to-surface.rkt"
-         "read.rkt")
+         "read.rkt"
+         "passes.rkt")
 
-(parse-program (read-ncomplr))
+(define (main)
+  (compile (parse-program (read-ncomplr)))
+  (void))
+
+(main)
