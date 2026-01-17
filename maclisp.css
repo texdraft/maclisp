@@ -7,6 +7,10 @@ body {
   overflow: scroll;
 }
 
+sub {
+  line-height: 0;
+}
+
 body p {
   max-width: 60ch;
 }
@@ -40,7 +44,7 @@ a:hover {
   vertical-align: top;
 }
 
-.align {
+.align, .sequence {
   display: inline-block;
   vertical-align: top;
 }

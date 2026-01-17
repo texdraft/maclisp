@@ -10,7 +10,11 @@
 (provide compile)
 
 (define (compile x)
-  (listify (rewrite-conditionals (rewrite-lambda-applications (resolve (install-functions x))))))
+  (listify
+   (break-lines
+    (rewrite-conditionals
+     (rewrite-lambda-applications
+      (resolve (install-functions x)))))))
 
 ;; environments are just alists
 
@@ -118,6 +122,41 @@
      e]))
 
 (define-pass resolve : Surface (e) -> Resolved ()
+  (definitions
+    (define (gather f)
+      (nanopass-case (Resolved File) f
+        [(file ,any (,e ...) (,comment ...))
+         ;; JANK!
+         (map (λ (form)
+                (with-output-language (Listified Tree)
+                  (nanopass-case (Resolved Expression) form
+                    [(defun ,f ,i (,x ...) ,body ,l)
+                     `(list (kw defun)
+                            (atom ,f)
+                            (atom ,i)
+                            (list ,(map (λ (x) `(atom ,x)) x) ...)
+                            (atom "…"))]
+                    [(defun ,f ,x ,body ,l)
+                     `(list (kw defun)
+                            (atom ,f)
+                            (atom ,x)
+                            (atom "…"))]
+                    [(defmacro ,f (,x ...) ,body ,l)
+                     `(list (kw defmacro)
+                            (atom ,f)
+                            (list ,(map (λ (x) `(atom ,x)) x) ...)
+                            (atom "…"))]
+                    [else
+                     #f])))
+              e)]
+        [else
+         (error "lol")])))
+  (Program : Program (p) -> Program ()
+    [(program ,[files] ...)
+     `(program ,(map gather files) ,files ...)])
+  (File : File (file) -> File ()
+    [(file ,any (,[e] ...) (,comment ...))
+     `(file ,any (,e ...) (,comment ...))])
   (Body : Body (x environment) -> Body ()
     [(begin/prog (,tag ...) (,tag? ,e) ...)
      (define new (bind-tags tag environment))
@@ -131,6 +170,7 @@
     [,x
      (classify-variable x environment)]
     [(defun ,f ,i (,x ...) ,body ,l)
+     
      (define new (bind-locals x environment))
      `(defun ,(classify-function f)
         ,i (,(map (variable-classifier new) x) ...) ,(Body body new) ,l)]
@@ -256,44 +296,114 @@
 
 (define-pass break-lines : Conditionals (e) -> Line-Breaks ()
   (definitions
-    (define (check e)
-      (let/ec k (any-breaks? e k) #f)))
-  ;; HACK!!!!!!!!!!!!!!!!!!!!!!! so i don't have to write a bunch of cases
-  (any-breaks? : Expression (e k) -> Expression (#f)
-    [(cond [,e ,body] ... ,l)
-     (k #t)]
-    [(prog2 ,e ... ,l)
-     (k #t)]
-    [(∧ ,[e0 k -> e*] ... ,l)
-     (if (> (length e*) 4)
-         (k #t)
-         e)]
-    [(∨ ,[e k -> e*] ... ,l)
-     (if (> (length e*) 4)
-         (k #t)
-         e)]
-    [(caseq ,e [(,any ...) ,body] ... ,l) (k #t)]
-    [(setq [,x1 ,e1] [,x2 ,e2] [,x3 ,e3] ... ,l) (k #t)]
-    [(psetq [,x1 ,e1] [,x2 ,e2] [,x3 ,e3] ... ,l) (k #t)]
-    [(λ (,x ...) ,body ,l) (k #t)]
-    [(λ ,x ,body ,l) (k #t)]
-    [(do ,x ,e0 ,e1 ,e2 ,prog-body ,l) (k #t)]
-    [(do ([,x ,e0 ,e1] ...) (,e ,body) ,prog-body ,l) (k #t)]
-    [(do ([,x ,e0 ,e1] ...) () ,prog-body ,l) (k #t)]
-    [(if ,e0 ,e1 ,e2 ,l) (k #t)]
-    [(let ([,x ,e] ...) ,body ,l) (k #t)]
-    [(let* ([,x ,e] ...) ,body ,l) (k #t)]
-    [(prog (,x ...) ,prog-body ,l) (k #t)]
-    [(prog1 ,[e1 k -> e1] ,[e2 k -> e2] ,l) e]
-    [(prog1 ,e ... ,l) (k #t)]
-    [(prog2 ,[e1 k -> e1] ,[e2 k -> e2] ,l) e]
-    [(prog2 ,e ... ,l) (k #t)]
-    [(progn ,[e1 k -> e1] ,[e2 k -> e2] ,l) e]
-    [(progn ,e ... ,l) (k #t)]
-    [(apply ,f ,[e k -> e] ... ,l) e])
-  (Expression : Expression (e) -> Expression ()))
+    (define (complicated? e)
+      (nanopass-case (Conditionals Expression) e
+        [(∧ ,e ... ,l) #t]
+        [(∨ ,e ... ,l) #t]
+        [(progn ,e ... ,l) #t]
+        [(prog1 ,e ... ,l) #t]
+        [(prog2 ,e ... ,l) #t]
+        [else #f]))
+    (define (go xs)
+      (map (λ (x)
+             (and x
+                  (call-with-values (λ () (Expression x))
+                                    (λ (x _) x))))
+           xs)))
+  (Expression : Expression (e!) -> Expression (#f)
+    [(cond [,[e -> e ?] ,[body]] ... ,l)
+     (values `(cond [,e ,body] ... ,l) #t)]
+    [(prog2 ,[e -> e ?] ... ,l)
+     (values `(prog2 ,(add-between e `(break)) ... ,l) #t)]
+    [(∧ ,[e -> e2 ?] ... ,l)
+     (values (if (or (>= (length e) 3)
+                     (ormap identity ?)
+                     (ormap complicated? e))
+                 `(∧ ,(add-between e2 `(break)) ... ,l)
+                 `(∧ ,e2 ... ,l))
+             (ormap identity ?))]
+    [(∨ ,[e -> e2 ?] ... ,l)
+     (values (if (or (>= (length e2) 3)
+                     (ormap identity ?)
+                     (ormap complicated? e))
+                 `(∨ ,(add-between e2 `(break)) ... ,l)
+                 `(∨ ,e2 ... ,l))
+             (ormap identity ?))]
+    [(caseq ,[e -> e _] [(,any ...) ,[body]] ... ,l)
+     (values `(caseq ,e [(,any ...) ,body] ... ,l)
+             #t)]
+    [(setq [,x1 ,[e1 -> e1 ?]] ,l)
+     (values `(setq [,x1 ,e1] ,l)
+             ?)]
+    [(setq [,x1 ,[e1]] [,x2 ,[e2]] [,x3 ,[e3]] ... ,l)
+     (values `(setq/broken [,x1 ,e1] ... ,l) #t)]
+    [(psetq [,x1 ,[e1]] [,x2 ,[e2]] [,x3 ,[e3]] ... ,l)
+     (values `(psetq/broken [,x1 ,e1] [,x2 ,e2] [,x3 ,e3] ... ,l)
+              #t)]
+    [(λ (,x ...) ,[body] ,l)
+     (values `(λ (,x ...) ,body ,l) #t)]
+    [(λ ,x ,[body] ,l)
+     (values `(λ ,x ,body ,l) #t)]
+    [(do ,x ,[e0 -> e0 _0] ,[e1 -> e1 _1] ,[e2 -> e2 _2] ,[prog-body] ,l)
+     (values `(do ,x ,e0 ,e1 ,e2 ,prog-body ,l) #t)]
+    [(do ([,x ,e0 ,e1] ...) (,[e -> e _] ,[body]) ,[prog-body] ,l)
+     (values `(do ([,x ,(go e0) ,(go e1)] ...)
+                  (,e ,body) ,prog-body ,l) #t)]
+    [(do ([,x ,e0 ,e1] ...) () ,[prog-body] ,l)
+     (values `(do ([,x ,(go e0) ,(go e1)] ...)
+                  () ,prog-body ,l) #t)]
+    [(if ,[e0 -> e0 _0] ,[e1 -> e1 _1] ,[e2 -> e2 _2] ,l)
+     (values `(if ,e0 ,e1 ,e2 ,l) #t)]
+    [(let ([,x ,e] ...) ,[body] ,l)
+     (values `(let ([,x ,(go e)]
+                    ...)
+                ,body ,l)
+             #t)]
+    [(let* ([,x ,e] ...) ,[body] ,l)
+     (values `(let* ([,x ,(go e)]
+                     ...)
+                ,body ,l)
+             #t)]
+    [(prog (,x ...) ,[prog-body] ,l)
+     (values `(prog (,x ...) ,prog-body ,l) #t)]
+    [(prog1 ,[e1 -> e1 ?1] ,[e2 -> e2 ?2] ,l)
+     (values (if (or ?1 ?2)
+                 `(prog1 ,e1 (break) ,e2 ,l)
+                 `(prog1 ,e1 ,e2 ,l))
+             (or ?1 ?2))]
+    [(prog1 ,[e -> e ?] ... ,l)
+     (values `(prog1 ,(add-between e `(break)) ... ,l) #t)]
+    [(prog2 ,[e1 -> e1 ?1] ,[e2 -> e2 ?2] ,l)
+     (values (if (or ?1 ?2)
+                 `(prog2 ,e1 (break) ,e2 ,l)
+                 `(prog2 ,e1 ,e2 ,l))
+             (or ?1 ?2))]
+    [(prog2 ,[e -> e ?] ... ,l)
+     (values `(prog2 ,(add-between e `(break)) ... ,l) #t)]
+    [(progn ,[e1 -> e1 ?1] ,[e2 -> e2 ?2] ,l)
+     (values (if (or ?1 ?2)
+                 `(progn ,e1 (break) ,e2 ,l)
+                 `(progn ,e1 ,e2 ,l))
+             (or ?1 ?2))]
+    [(progn ,[e -> e ?] ... ,l)
+     (values `(progn ,(add-between e `(break)) ... ,l) #t)]
+    [(when ,[e -> e _] ,[body])
+     (values `(when ,e ,body) #t)]
+    [(apply ,f ,[e -> e ?] ... ,l)
+     (values (if (ormap identity ?)
+                 `(apply ,f ,(add-between e `(break)) ... ,l)
+                 `(apply ,f ,e ... ,l))
+             (ormap identity ?))])
+  (Body : Body (body) -> Body ()
+    [(begin ,[e -> e ?] ...)
+     `(begin ,e ...)]
+    [(begin/prog (,tag ...) (,tag? ,[e -> e ?]) ...)
+     `(begin/prog (,tag ...) (,tag? ,e) ...)])
+  (File : File (file) -> File ()
+    [(file ,any (,[e -> e ?] ...) (,comment ...))
+     `(file ,any (,e ...) (,comment ...))]))
 
-(define-pass listify : Conditionals (e) -> Listified ()
+(define-pass listify : Line-Breaks (e) -> Listified ()
   (definitions
     (define (atomize x)
       (with-output-language (Listified Tree)
@@ -312,7 +422,7 @@
     (define (binding x e0 e1)
       (with-output-language (Listified Tree)
         (cond [(and e0 e1)
-               `(list (atom ,x) ,e0 ,e1)]
+               `(list (atom ,x) (align ,e0 ,e1))]
               [e0
                `(list (atom ,x) ,e0)]
               [else
@@ -335,8 +445,8 @@
       (with-output-language (Listified Tree)
         `(list/l (kw ,operator) (sequence/group ,x ...) ,l))))
   (Program : Program (e) -> Program ()
-    [(program ,[files] ...)
-     `(program ,files ...)])
+    [(program ,any ,[files] ...)
+     `(program ,any ,files ...)])
   (Expression : Expression (e) -> Tree ()
     [(defun ,f ,i (,x ...) ,[Body : body -> tree] ,l)
      `(list/l (kw ,'defun)
@@ -496,11 +606,11 @@
               ,l)]
     [(∧ ,[Expression : e -> tree] ... ,l)
      `(list/l (kw ∧)
-              (align ,tree ...)
+              (sequence ,tree ...)
               ,l)]
     [(∨ ,[Expression : e -> tree] ... ,l)
      `(list/l (kw ∨)
-              (align ,tree ...)
+              (sequence ,tree ...)
               ,l)]
     [(quote ,any ,l)
      `(prefix "’" ,(if (Symbol? any)
@@ -519,15 +629,15 @@
               ,l)]
     [(prog1 ,[Expression : e -> tree] ... ,l)
      `(list/l (kw prog1)
-              (align ,tree ...)
+              (sequence ,tree ...)
               ,l)]
     [(prog2 ,[Expression : e -> tree] ... ,l)
      `(list/l (kw prog2)
-              (align ,tree ...)
+              (sequence ,tree ...)
               ,l)]
     [(progn ,[Expression : e -> tree] ... ,l)
      `(list/l (kw progn)
-              (align ,tree ...)
+              (sequence ,tree ...)
               ,l)]
     [(progv ,[Expression : e0 -> tree0] ,[Expression : e1 -> tree1] ,[Expression : e -> tree] ... ,l)
      `(list/l (kw progv)
@@ -576,7 +686,7 @@
      `(list (kw unless) ,tree (break)
             (indent ,tree-body))]
     [(apply ,f ,[Expression : e -> tree] ... ,l)
-     `(list/l ,(atomize f) ,tree ... ,l)])
+     `(list/l ,(atomize f) (sequence ,tree ...) ,l)])
   (Declaration-Item : Declaration-Item (e) -> Tree ()
     [(function ,f ,s ... ,l)
      `(list/l (atom ,f) ,(map atomize s) ... ,l)]

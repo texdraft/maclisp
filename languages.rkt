@@ -127,6 +127,9 @@
   (terminals (- (Symbol (f x s ss tag)))
              (+ (Symbol-Info (f x tag)))
              (+ (Symbol (s ss))))
+  (Program (p)
+           (- (program files ...))
+           (+ (program any files ...)))
   (Expression (e)
               (- (fexpr f ... l))
               (+ (fexpr s ... l) => (fexpr s ...))))
@@ -146,14 +149,16 @@
 (define-language Line-Breaks
   (extends Conditionals)
   (Expression (e)
-              (+ (break))))
+              (+ (break))
+              (+ (setq/broken [x e] ... l))
+              (+ (psetq/broken [x e] ... l))))
 
 (define-language Listified
   (terminals (any (any))
              (srcloc (l))
              (Comment (comment)))
   (Program (p)
-           (program files ...))
+           (program any files ...))
   (File (files)
         (file any (tree ...) (comment ...)))
   (Tree (tree tree-body)

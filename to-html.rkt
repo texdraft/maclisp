@@ -120,18 +120,39 @@
       (define stuff (add-between formatted-w '(br)))
       (if (> number 5)
           `(div [[class "align"]] ,@stuff)
-          `(span ,@stuff))))
+          `(span ,@stuff)))
+    (define (empty? x)
+      (nanopass-case (Listified Tree) x
+        [(list) #t]
+        [(list/broken) #t]
+        [(sequence) #t]
+        [(sequence/broken) #t]
+        [(align) #t]
+        [else #f])))
   (Program : Program (p) -> * ()
-    [(program ,[File : files -> e] ...)
+    [(program ,any ,[File : files -> e] ...)
      `(html (head (meta [[charset "UTF-8"]])
                   (title "NCOMPLR")
                   (link [[rel "stylesheet"]
                          [href "maclisp.css"]]))
             (body (h1 "NCOMPLR")
+                  (ol [[class "contents"]]
+                      ,@(map (λ (file fs)
+                               (define name (nanopass-case (Listified File)
+                                                           file
+                                                           [(file ,any
+                                                                  (,tree ...)
+                                                                  (,comment ...))
+                                                            any]))
+                               `(li (span "File " (a [[href ,(~a "#" name)]] (code ,name)))
+                                    ,@(map (λ (x) `(ol ,(Tree x 0)))
+                                           (filter identity fs))))
+                             files any))
                   ,@e))])
   (File : File (f) -> * ()
     [(file ,any (,[Tree : tree 0 -> h] ...) (,comment ...))
-     `(section (h2 "File " (code ,any))
+     `(section [[id ,any]]
+               (h2 "File " (a [[href ,(~a "#" any)]](code ,any)))
                (div [[class "listing"]]
                     ,@(add-between (map (λ (x) `(div [[class "top-level"]] ,x))
                                         h)
@@ -147,21 +168,21 @@
     [(list)
      (wrap n `(span "(\u2009)"))]
     [(list ,tree ...)
-     `(div "(" ,@(parenthesize tree " " (+ n 1)))]
+     `(div "(" ,@(parenthesize (filter (negate empty?) tree) " " (+ n 1)))]
     [(list/broken)
      (wrap n "")]
     [(list/broken ,tree ...)
-     `(div "(" ,@(parenthesize tree '(br) (+ n 1)))]
+     `(div "(" ,@(parenthesize (filter (negate empty?) tree) '(br) (+ n 1)))]
     [(sequence/broken)
      (wrap n "")]
     [(sequence/broken ,tree ...)
-     `(div ,@(parenthesize tree '(br) n))]
+     `(div ,@(parenthesize (filter (negate empty?) tree) '(br) n))]
     [(break)
-     '(br)]
+     (wrap n '(br))]
     [(list/l ,l)
      (wrap n "(\u2009)")]
     [(list/l ,tree ... ,l)
-     `(div "(" ,@(parenthesize tree " " (+ n 1)))]
+     `(div "(" ,@(parenthesize (filter (negate empty?) tree) " " (+ n 1)))]
     [(prefix ,any ,tree)
      `(div ,(~a any) ,(Tree tree n))]
     [(tagged ,any ,tree)
@@ -169,13 +190,13 @@
            (span [[class "tag-definition"]] ,(atom any))
            (br)
            ,(Tree tree n))]
-    [(sequence) ""]
+    [(sequence) (wrap n "")]
     [(sequence ,tree ...)
-     `(div ,@(parenthesize tree " " n))]
+     `(div [[class "sequence"]] ,@(parenthesize (filter (negate empty?) tree) " " n))]
     [(sequence/group ,tree ...)
-     `(div [[class "sg"]],(do-group-list (map (λ (t) (Tree t 0)) tree) n))]
-    [(align) ""]
+     `(div [[class "sg"]],(do-group-list (map (λ (t) (Tree t 0)) (filter (negate empty?) tree)) n))]
+    [(align) (wrap n "")]
     [(align ,tree ...)
-     `(div [[class "align"]] ,@(parenthesize tree '(br) n))]
+     `(div [[class "align"]] ,@(parenthesize (filter (negate empty?) tree) '(br) n))]
     [(indent ,tree)
      `(div [[class "indent"]] ,(Tree tree n))]))
