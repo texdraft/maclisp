@@ -5,7 +5,9 @@
 (provide variables functions ncomplr-specials)
 
 (define ncomplr-specials
-  '(("ACSMODE")
+  '(("+INTERNAL-WITHOUT-INTERRUPTS")
+    ("+INTERNAL-INTERRUPT-BOUND-VARIABLES")
+    ("ACSMODE")
     ("ARGLOC")
     ("ARGNO")
     ("ARITHP")

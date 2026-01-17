@@ -31,41 +31,8 @@
          (struct-out Sharp-Minus)
          (struct-out Character)
          read-ncomplr
-         obarray
-         unparse)
-
-(define (unparse x)
-  (match x
-    [(List content _)
-     (map unparse content)]
-    [(Dotted-List content _)
-     (define-values (butlast last) (split-at-right (map unparse content) 1))
-     (foldr cons (first last) butlast)]
-    [(Quote datum _)
-     (list 'quote (unparse datum))]
-    [(Symbol name _)
-     (string->symbol (string-downcase name))]
-    [(Integer _ value _)
-     value]
-    [(Float content _)
-     content]
-    [(String text _)
-     text]
-    [(Comma datum _)
-     (list 'unquote (unparse datum))]
-    [(Comma-At datum _)
-     (list 'unquote-splicing (unparse datum))]
-    [(Comma-Dot datum _)
-     (list 'unquote-splicing (unparse datum))]
-    [(Sharp-Dot x _)
-     (list 'SHARP-DOT (unparse x))]
-    [(Sharp-Percent x _)
-     (list 'SHARP-PERCENT (unparse x))]
-    [(Sharp-Quote x _)
-     (list 'SHARP-Quote (unparse x))]
-    [(Backquote x _)
-     (list 'quasiquote (unparse x))]
-    [_ x]))
+         symbol->print
+         obarray)
 
 ;; The global table of symbol names, mapping their internal, Lisp form
 ;; (uppercase with slashes removed) to their external form.
@@ -77,7 +44,10 @@
 (define (internalize s)
   (hash-set! obarray s (friendly-symbol s)))
 
-(struct File (data comments) #:transparent)
+(define (symbol->print s)
+  (hash-ref obarray s))
+
+(struct File (name data comments) #:transparent)
 
 (struct Comment (text location) #:transparent)
 (struct Block-Comment (text location) #:transparent)
@@ -150,7 +120,7 @@
    [(:: #\# #\') (token-sharp-quote)]
    [(:: #\, #\.) (token-comma-dot)]
    [(:: #\, #\@) (token-comma-at)]
-   [(:: #\# #\/ any-char) (token-sharp-slash (Character lexeme #f))]
+   [(:: #\# #\/ any-char) (token-sharp-slash (Character (substring lexeme 2) #f))]
    [(:: #\# #\\) (token-sharp-backslash)]
    [(:: #\,) (token-comma)]
    [(:: #\') (token-quote)]
@@ -158,7 +128,7 @@
    [(:: #\.) (token-dot)]
    [(:: #\() (token-left-parenthesis)]
    [(:: #\)) (token-right-parenthesis)]
-   [(:: #\" string-stuff #\") (token-string lexeme)]
+   [(:: #\" string-stuff #\") (token-string (string-trim lexeme "\""))]
    [binary-integer (token-integer (Integer 2 lexeme #f))]
    [octal-integer (token-integer (Integer 8 lexeme #f))]
    [decimal-integer (token-integer (Integer 10 lexeme #f))]
@@ -210,7 +180,7 @@
       (port-count-lines! in)
       (for/foldr ([data (list)]
                   [comments (list)]
-                  #:result (File data comments))
+                  #:result (File in-name data comments))
         ([token (in-producer (make-read-one in)
                              (λ (t) (and (not (Comment? t))
                                          (eof-object? (position-token-token t)))))])
@@ -353,18 +323,19 @@
   (do [result <- (many-until/p s-expression/p #:end eof/p)]
       (pure (first result))))
 
-(define (parse-file in-name)
+(define (parse-file title in-name)
   (printf "Reading ~a …\n" in-name)
   (define file (lex-file in-name))
-  (File (parse-result! (parse-tokens file/p (File-data file) in-name))
+  (File title
+        (parse-result! (parse-tokens file/p (File-data file) in-name))
         (File-comments file)))
 
 (define (read-ncomplr)
-  (list (parse-file "corpus/comlap/cdmacs.lisp")
-        (parse-file "corpus/comlap/ccload.lisp")
-        (parse-file "corpus/comlap/complr.lisp")
-        (parse-file "corpus/comlap/phas1.lisp")
-        (parse-file "corpus/comlap/comaux.lisp")
-        (parse-file "corpus/comlap/initia.lisp")
-        (parse-file "corpus/comlap/maklap.lisp")
-        (parse-file "corpus/comlap/faslap.lisp")))
+  (list (parse-file "CDMACS" "corpus/comlap/cdmacs.lisp")
+        (parse-file "CCLOAD" "corpus/comlap/ccload.lisp")
+        (parse-file "COMPLR" "corpus/comlap/complr.lisp")
+        (parse-file "PHAS1" "corpus/comlap/phas1.lisp")
+        (parse-file "COMAUX" "corpus/comlap/comaux.lisp")
+        (parse-file "INITIA" "corpus/comlap/initia.lisp")
+        (parse-file "MAKLAP" "corpus/comlap/maklap.lisp")
+        (parse-file "FASLAP" "corpus/comlap/faslap.lisp")))

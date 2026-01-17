@@ -1701,7 +1701,7 @@
         (CASEQ FUN (ERRSET (SETQ ERSTP 'T)) 
                    (%PASS-THRU (SETQ PASSP 'T))
                    ((*CATCH %CATCHALL CATCH-BARRIER) (SETQ CATP 'T))
-                   ('T (BARF FUN |What type frame - COMERSET|)))
+                   (T (BARF FUN |What type frame - COMERSET|)))
         (COND ((OR PASSP (AND CATP (EQ FUN '%CATCHALL))) 
                #%(LET ((FTAG (GENSYM)))
                      #%(CLEARALLACS)
@@ -1769,7 +1769,6 @@
                 (TYPEP (CADR ITEM))))
           ('T 
            #%(LET ((LOC #%(NUMVALAC)))
-                 (DECLARE (SPECIAL LOC))
                  (COND ((EQ MODE 'FIXNUM)
                         #%(LET ((TAKENAC1 (+ #%(NUMVALAC) #%(NUMNACS) -1)))
                               (SETQ LOC (LOADINSOMENUMAC ITEM)))
@@ -1777,12 +1776,11 @@
                              (LOADAC ITEM (SETQ LOC #%(NUMVALAC)) () ))
                         (CPUSH (1+ LOC))
                         (MAPC 'OUTPUT 
-                              (CASEQ LOC 
-                                     (#.(+ 0 (NUMVALAC))         ;to flush the QUOTE
+                              (COND ((= LOC #.(+ 0 (NUMVALAC)))         ;to flush the QUOTE
                                        '((MULI #.(NUMVALAC) 256.)
                                          (TSC #.(NUMVALAC) #.(NUMVALAC))
                                          (ASH #.(+ 1 (NUMVALAC)) -163. #.(NUMVALAC))))
-                                     (#.(+ 1 (NUMVALAC))
+                                     ((= LOC #.(+ 1 (NUMVALAC)))
                                        '((MULI #.(+ 1 (NUMVALAC)) 256.)
                                          (TSC #.(+ 1 (NUMVALAC)) #.(+ 1 (NUMVALAC)))
                                          (ASH #.(+ 2 (NUMVALAC)) -163. #.(+ 1 (NUMVALAC)))))

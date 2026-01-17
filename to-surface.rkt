@@ -62,8 +62,9 @@
 (define (parse-file file)
   (with-output-language (Surface File)
     (match file
-      [(File forms comments)
-       `(file (,(filter identity (map (λ (f)
+      [(File title forms comments)
+       `(file ,title
+              (,(filter identity (map (λ (f)
                                         (parse-expression (remove-conditionals f)))
                                       forms))
                ...)
@@ -77,15 +78,22 @@
         [(LIST (f s ...) l) `(function ,f ,s ... ,l)])))
   (with-output-language (Surface Expression)
     (match e
+      [(or (S "T" l)
+           (Quote (S "T" l) _))
+       `(t ,l)]
+      [(S "NIL" l) `(nil ,l)]
       [(or (Symbol _ _)
            (Integer _ _ _)
            (Float _ _)
            (String _ _)
+           (Character _ _)
            #f)
        e]
       [(Sharp-Quote datum l) `(function ,(parse-expression datum) ,l)]
       [(Sharp-Dot datum l) `(sharp-dot ,(parse-expression datum) ,l)]
-      [(Sharp-Percent datum l) `(sharp-percent ,datum ,l)]
+      [(Sharp-Percent datum l) `(sharp-percent ,(parse-expression datum) ,l)]
+      [(Sharp-Plus guard expression l) `(sharp-plus ,guard ,(parse-expression expression) ,l)]
+      [(Sharp-Minus guard expression l) `(sharp-minus ,guard ,(parse-expression expression) ,l)]
       [(Quote (and datum (LIST ((S "LAMBDA") _ ...))) l)
        (parse-expression datum)]
       [(Quote datum l)
@@ -98,6 +106,8 @@
        `(defun ,name ,'expr (,arguments ...) ,(parse-progn body) ,l)]
       [(LIST ((S "DEFUN") name (and x (S)) body ...) l)
        `(defun ,name ,x ,(parse-progn body) ,l)]
+      [(LIST ((S "DEFMACRO") name (LIST (arguments ...)) body ...) l)
+       `(defmacro ,name (,arguments ...) ,(parse-progn body) ,l)]
       [(LIST ((S "DEFPROP") s v i) l)
        `(defprop ,s ,v ,i ,l)]
       [(LIST ((S "SETQ") pairs ...) l)
@@ -107,8 +117,6 @@
        (define-values (xs es) (parse-pairs pairs))
        `(psetq [,xs ,es] ... ,l)]
       [(LIST ((S "COND") clauses ...) l) (parse-cond clauses l)]
-      [(S "T" l) `(t ,l)]
-      [(S "NIL" l) `(nil ,l)]
       [(LIST () l) `(nilp ,l)]
       [(LIST ((S "LAMBDA") (LIST (xs ...)) body ...) l)
        (parse-lambda xs body l)]
@@ -182,11 +190,11 @@
       [(LIST ((S "STORE") e0 e1) l)
        `(store ,(parse-expression e0) ,(parse-expression e1) ,l)]
       [(LIST ((S "UNWIND-PROTECT") e0 es ...) l)
-       `(unwind-protect ,(parse-expression e0) ,(map parse-expression es) ,l)]
+       `(unwind-protect ,(parse-expression e0) ,(map parse-expression es) ... ,l)]
       [(LIST ((S "SIGNP") (and s (S)) e) l)
        `(signp ,s ,(parse-expression e) ,l)]
       [(LIST ((S "*CATCH") e0 es ...) l)
-       `(catch ,(parse-expression e0) ,(parse-progn es) ,l)]
+       `(catch ,(parse-expression e0) ,(map parse-expression es) ... ,l)]
       [(LIST ((S "*THROW") e0 e1) l)
        `(throw ,(parse-expression e0) ,(parse-expression e1) ,l)]
       [(LIST ((S "CATCH") e s) l)
@@ -241,12 +249,12 @@
             (rest (rest pairs)))))
 
 (define (parse-cond clauses l)
-  (for/foldr ([es (list)]
+  (for/fold ([es (list)]
               [bodies (list)]
               [clauses clauses]
              #:result (with-output-language (Surface Expression)
-                        `(cond [,es ,bodies] ... ,l)))
-            ()
+                        `(cond [,(reverse es) ,(reverse bodies)] ... ,l)))
+            ([_ (in-list clauses)])
     (match (first clauses)
       [(LIST (e body ...) _)
        (values (cons (parse-expression e) es)
@@ -286,7 +294,7 @@
              #:result (with-output-language (Surface Body)
                         `(begin/prog (,(filter identity tags) ...)
                                      (,(reverse tags) ,(reverse statements)) ...)))
-            ()
+            ([_ (in-list prog-body)])
     #:break (null? rest)
     (match rest
       [(list (and tag (S)) e es ...)
@@ -337,15 +345,15 @@
       [(Comma-At e l) `(comma-at ,(parse-expression e) ,l)])))
 
 (define (parse-caseq e clauses l)
-  (for/foldr ([lists (list)]
+  (for/foldr ([ss (list)]
               [bodies (list)]
               #:result (with-output-language (Surface Expression)
-                         `(caseq ,e [,lists ,bodies] ... ,l)))
+                         `(caseq ,e [(,ss ...) ,bodies] ... ,l)))
              ([clause (in-list clauses)])
     (match clause
-      [(LIST ((and lst (LIST _)) body ...))
-       (values (cons lst lists)
+      [(LIST ((LIST (s ...)) body ...))
+       (values (cons s ss)
                (cons (parse-progn body) bodies))]
       [(LIST (atom body ...) l)
-       (values (cons (List (list atom) #f) lists)
+       (values (cons (list atom) ss)
                (cons (parse-progn body) bodies))])))
