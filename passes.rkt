@@ -100,11 +100,19 @@
     [(Symbol name _)
      (or (lookup-system-function name)
          (lookup-function name)
+         (lookup-array name)
          (Symbol-Info #f
                       (Symbol-Kind 'unbound #f)
                       name
                       (string-downcase name)
                       #f))]))
+
+(define (classify-function? s)
+  (match s
+    [(Symbol name _)
+     (or (lookup-system-function name)
+         (lookup-function name)
+         (lookup-array name))]))
 
 (define ((variable-classifier environment) s)
   (classify-variable s environment))
@@ -321,14 +329,18 @@
                      (ormap complicated? e))
                  `(∧ ,(add-between e2 `(break)) ... ,l)
                  `(∧ ,e2 ... ,l))
-             (ormap identity ?))]
+             (or (>= (length e) 3)
+                 (ormap identity ?)
+                 (ormap complicated? e)))]
     [(∨ ,[e -> e2 ?] ... ,l)
      (values (if (or (>= (length e2) 3)
                      (ormap identity ?)
                      (ormap complicated? e))
                  `(∨ ,(add-between e2 `(break)) ... ,l)
                  `(∨ ,e2 ... ,l))
-             (ormap identity ?))]
+             (or (>= (length e) 3)
+                 (ormap identity ?)
+                 (ormap complicated? e)))]
     [(caseq ,[e -> e _] [(,any ...) ,[body]] ... ,l)
      (values `(caseq ,e [(,any ...) ,body] ... ,l)
              #t)]
@@ -352,6 +364,8 @@
     [(do ([,x ,e0 ,e1] ...) () ,[prog-body] ,l)
      (values `(do ([,x ,(go e0) ,(go e1)] ...)
                   () ,prog-body ,l) #t)]
+    [(quote ,any ,l)
+     (values `(quote ,any ,l) (or (Dotted-List? any) (List? any)))]
     [(if ,[e0 -> e0 _0] ,[e1 -> e1 _1] ,[e2 -> e2 _2] ,l)
      (values `(if ,e0 ,e1 ,e2 ,l) #t)]
     [(let ([,x ,e] ...) ,[body] ,l)
@@ -389,6 +403,8 @@
      (values `(progn ,(add-between e `(break)) ... ,l) #t)]
     [(when ,[e -> e _] ,[body])
      (values `(when ,e ,body) #t)]
+    [(function ,[e -> e _] ,l)
+     (values `(function ,e ,l) #t)]
     [(apply ,f ,[e -> e ?] ... ,l)
      (values (if (ormap identity ?)
                  `(apply ,f ,(add-between e `(break)) ... ,l)
@@ -405,6 +421,42 @@
 
 (define-pass listify : Line-Breaks (e) -> Listified ()
   (definitions
+    (define (q x)
+      (with-output-language (Listified Tree)
+        (match x
+          [(or (? Symbol?)
+               (? Integer?)
+               (? Float?)
+               (? String?))
+           (cond [(and (Symbol? x)
+                       (lookup-function (Symbol-name x)))
+                  => (λ (si)
+                       `(atom ,si))]
+                 [else `(atom ,x)])]
+          [(List items _)
+           (cond [(andmap Symbol? items)
+                  (let [(functions (map classify-function? items))]
+                    (if (andmap identity functions)
+                        `(list (sequence/group ,(map atomize functions) ...))
+                        `(list (sequence/group ,(map atomize items) ...))))]
+                 [(andmap Dotted-List? items)
+                  `(list (align ,(map q items) ...))]
+                 [else
+                  `(atom "…")])
+           #;`(list (sequence/group ,(map q items) ...))]
+          [(Dotted-List items _)
+           (define (go items)
+             (define-values (head tail) (split-at-right items 1))
+             `(list (sequence/group ,head ... (atom ".") ,tail ...)))
+           (cond [(andmap Symbol? items)
+                  (define functions (map classify-function? items))
+                  (if (andmap identity functions)
+                      (go (map atomize functions))
+                      (go (map atomize items)))]
+                 [else `(atom "…")])]
+          [(Quote x _)
+           `(prefix "’" ,(q x))]
+          [_ (error x)])))
     (define (atomize x)
       (with-output-language (Listified Tree)
         `(atom ,x)))
@@ -424,9 +476,9 @@
         (cond [(and e0 e1)
                `(list (atom ,x) (align ,e0 ,e1))]
               [e0
-               `(list (atom ,x) ,e0)]
+               `(list (atom ,x)  ,e0)]
               [else
-               `(list (atom ,x))])))
+               `(list (atom ,x) (kw nil))])))
     (define (do-end test form)
       (with-output-language (Listified Tree)
         (nanopass-case (Listified Tree) form
@@ -435,7 +487,7 @@
           [(list ,tree)
            `(list ,test ,tree)]
           [else
-           `(align ,test ,form)])))
+           `(list (sequence ,test ,form))])))
     (define (simple l operator . r)
       (with-output-language (Listified Tree)
         `(list/l (kw ,operator) ,r ... ,l)))
@@ -481,7 +533,7 @@
     [(comment-form ,any)
      (simple-long (srcloc #f #f #f #f #f) 'comment (map atomize any))]
     [(defprop ,s ,any ,ss ,l)
-     `(list/l (kw defprop) (atom ,s) (atom ,any) (atom ,ss) ,l)]
+     `(list/l (kw defprop) (atom ,s) (atom "…") (atom ,ss) ,l)]
     [(sharp-percent ,[Expression : e -> tree] ,l)
      #;`(prefix "#%" ,tree)
      tree]
@@ -497,9 +549,23 @@
             ,l)]
     [(cond [,[Expression : e -> tree] ,[Body : body -> tree-body]] ... ,l)
      `(list/l (kw cond) (align ,(map (λ (e b)
+                                       (define (atom e b)
+                                         (nanopass-case (Listified Tree) b
+                                           [(atom ,any)
+                                            `(sequence ,e ,b)]
+                                           [(atom/l ,any ,l)
+                                            `(sequence ,e ,b)]
+                                           [(kw ,any)
+                                            `(sequence ,e ,b)]))
                                        (nanopass-case (Listified Tree) b
                                          [(sequence/broken)
                                           `(list ,e)]
+                                         [(atom ,any)
+                                          (atom e b)]
+                                         [(atom/l ,any ,l)
+                                          (atom e b)]
+                                         [(kw ,any)
+                                          (atom e b)]
                                          [else
                                           `(list/broken (align ,e ,b))]))
                                      tree tree-body)
@@ -558,17 +624,15 @@
               ,[Expression : e1 -> tree1]] ...)
          ()
          ,[Body : prog-body -> tree-body1] ,l)
-     `(list/l (kw do)
+     `(list/l (kw prog)
               (align (list (align ,(map binding x tree0 tree1) ...))
-                     (list))
-              (break)
-              (indent ,tree-body1)
+                     ,tree-body1)
               ,l)]
     [(err ,[Expression : e -> tree] ,l)
      (simple l 'err tree)]
     [(errset ,[Expression : e0 -> tree0] ,[Expression : e1 -> tree1] ,l)
      (if e1
-         (simple l 'errset tree0 tree1)
+         `(list/l (kw errset) (align ,tree0 ,tree1) ,l)
          (simple l 'errset tree0))]
     [(eval-when (,s ...) ,[Body : body -> tree-body] ,l)
      `(list/l (kw eval-when) (list ,(map atomize s) ...)
@@ -578,7 +642,7 @@
     [(function ,[Expression : e -> tree] ,l)
      (simple l 'function tree)]
     [(go ,tag ,l)
-     (simple l 'go (atomize tag))]
+     `(highlight ,(simple l 'go (atomize tag)))]
     [(vgo ,[Expression : e -> tree] ,l)
      (simple l 'go tree)]
     [(return ,[Expression : e -> tree] ,l)
@@ -600,7 +664,7 @@
               ,l)]
     [(let* ([,x ,[Expression : e -> tree]] ...) ,[Body : body -> tree-body] ,l)
      `(list/l (kw let*)
-              (list (align ,(map binding x tree (map (const #f) x))) ...)
+              (list (align ,(map binding x tree (map (const #f) x)) ...))
               (break)
               (indent ,tree-body)
               ,l)]
@@ -613,9 +677,7 @@
               (sequence ,tree ...)
               ,l)]
     [(quote ,any ,l)
-     `(prefix "’" ,(if (Symbol? any)
-                       (atomize any)
-                       `(atom "…")))]
+     `(prefix "’" ,(q any))]
     [(backquote ,bqe ,l)
      `(prefix "‘" (atom "…"))]
     [(pop ,x ,l)
@@ -645,7 +707,9 @@
               (indent (align ,tree ...))
               ,l)]
     [(status ,any0 ,any ... ,l)
-     (simple l 'status (atomize any0) (atomize "…"))]
+     (if (string=? (Symbol-name any0) "FEATURE")
+         (simple l 'status (atomize any0) (atomize (first any)))
+         (simple l 'status (atomize any0) (atomize "…")))]
     [(sstatus ,any0 ,any ... ,l)
      (simple l 'status (atomize any0) (atomize "…"))]
     [(store ,[Expression : e0 -> tree0] ,[Expression : e1 -> tree1] ,l)

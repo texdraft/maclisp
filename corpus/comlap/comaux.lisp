@@ -6,7 +6,7 @@
 ;;;   ****** This is a Read-Only file! (All writes reserved) *******
 ;;;   **************************************************************
 
-(SETQ COMAUXVERNO '#.(let* ((file (caddr (truename infile)))
+(SETQ COMAUXVERNO #.(let* ((file (caddr (truename infile)))
                            (x (readlist (exploden file))))
                           (setq |verno| (cond ((fixp x) file)  ('/25)))))
 
@@ -1576,7 +1576,7 @@
                  ((NULL X) (PRINC '|() |))
                  ('T (PRIN1 X))))
           ((HUNKP X)
-           '#%(LET* ((EP (AND (EQ (CAR X) '**SELF-EVAL**)
+           #%(LET* ((EP (AND (EQ (CAR X) '**SELF-EVAL**)
                               (*:EXTENDP X)))
                      (VP (AND EP (GET 'VECTOR 'VERSION) (VECTORP X))))
                 (COND ((AND EP (NOT VP))

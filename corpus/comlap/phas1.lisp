@@ -7,7 +7,7 @@
 ;;;   **************************************************************
 
 
-(SETQ PHAS1VERNO '#.(let* ((file (caddr (truename infile)))
+(SETQ PHAS1VERNO #.(let* ((file (caddr (truename infile)))
                            (x (readlist (exploden file))))
                           (setq |verno| (cond ((fixp x) file)  ('/86)))))
 

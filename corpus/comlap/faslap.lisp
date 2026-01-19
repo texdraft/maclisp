@@ -8,7 +8,7 @@
 
 
 
-(SETQ FASLVERNO '#.(let* ((file (caddr (truename infile)))
+(SETQ FASLVERNO #.(let* ((file (caddr (truename infile)))
 			   (x (readlist (exploden file))))
 			  (setq |verno| (cond ((fixp x) file) ('/392)))))
 
@@ -461,7 +461,7 @@
 
 
 (DEFUN ATOMINDEX (X TYPE)
-   (let ((user-index (if (not (memq type '#.useratoms-non-types))
+   (let ((user-index (if (not (memq type #.useratoms-non-types))
 			 (useratoms-lookup x))))
       (cond ((not (null user-index)) user-index)
 	    ((null x) 0)
@@ -629,7 +629,7 @@
 
 (defun LISTOUT (x)
   (let* ((type (typep x))
-	 (index (if (not (memq type '#.useratoms-non-types))
+	 (index (if (not (memq type #.useratoms-non-types))
 		    (useratoms-lookup x))))
        (cond ((not (null index)) (faslout index))
 	     ((eq type 'RANDOM) 

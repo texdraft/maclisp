@@ -7,7 +7,7 @@
 ;;;   **************************************************************
 
 
-(SETQ INITIAVERNO '#.(let* ((file (caddr (truename infile)))
+(SETQ INITIAVERNO #.(let* ((file (caddr (truename infile)))
                             (x (readlist (exploden file))))
                        (setq |verno| (cond ((fixp x) file)  ('/120)))))
 
@@ -60,21 +60,21 @@
     (SETQ OBARRAY (SETQ SOBARRAY (GET 'OBARRAY 'ARRAY)))
     (SETQ READTABLE (SETQ SREADTABLE (GET 'READTABLE 'ARRAY)))
     (SETQ SWITCHTABLE                                   ;Setup before INTERNing
-          (APPEND '(
+          (APPEND `(
                     (/$ FLOSW () )  (/+ FIXSW () )   (/~ QUIT-ON-ERROR () )  
                     (/2 HUNK2-TO-CONS ())  (/7 USE-STRT7 ()) 
                     (A ASSEMBLE () ) (C CLOSED () ) 
                     (D DISOWNED () ) (E EXPR-HASH () )
-                    (F FASL #.(AND (MEMQ COMPILER-STATE '(MAKLAP DECLARE)) T))
+                    (F FASL ,(AND (MEMQ COMPILER-STATE '(MAKLAP DECLARE)) T))
                     (G GAG-ERRBREAKS () ) (H EXPAND-OUT-MACROS T)
                     (I INITIALIZE () )   
-                    (K NOLAP #.(AND (MEMQ COMPILER-STATE '(MAKLAP DECLARE)) T))
+                    (K NOLAP ,(AND (MEMQ COMPILER-STATE '(MAKLAP DECLARE)) T))
                     (M MACROS () ) (O ARRAYOPEN T) 
                     (R RUNTIME-LIMITP () ) (S SPECIALS () ) 
-                    (T TTYNOTES #.(AND (NOT (MEMQ COMPILER-STATE 
+                    (T TTYNOTES ,(AND (NOT (MEMQ COMPILER-STATE 
                                                   '(MAKLAP DECLARE))) T))
                     (W MUZZLED () )  (X MAPEX () ) 
-                    (Y YESWARNTTY #.(AND (NOT (MEMQ COMPILER-STATE 
+                    (Y YESWARNTTY ,(AND (NOT (MEMQ COMPILER-STATE 
                                                     '(MAKLAP DECLARE))) T) ) 
                     (Z SYMBOLS () )
                     ) 

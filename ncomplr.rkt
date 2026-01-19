@@ -4,18 +4,32 @@
 
 (require "big-lists.rkt"
          "symbol-info.rkt")
-(provide lookup-ncomplr-special)
+(provide lookup-ncomplr-special
+         lookup-array)
+
+(define (install s)
+  (cons (car s)
+        (Symbol-Info #f
+                     (Symbol-Kind 'special
+                                  #f)
+                     (car s)
+                     (string-downcase (car s))
+                     #f)))
 
 (define lookup-ncomplr-special
+  (let ([table (make-hash (map install ncomplr-specials))])
+    (λ (s)
+      (hash-ref table s #f))))
+
+(define lookup-array
   (let ([table (make-hash (map (λ (s)
                                  (cons (car s)
                                        (Symbol-Info #f
-                                                    (Symbol-Kind 'special
-                                                                 #f)
+                                                    (Symbol-Kind 'array #f)
                                                     (car s)
                                                     (string-downcase (car s))
                                                     #f)))
-                               ncomplr-specials))])
+                               ncomplr-arrays))])
     (λ (s)
       (hash-ref table s #f))))
 

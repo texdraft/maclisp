@@ -15,6 +15,10 @@ body p {
   max-width: 60ch;
 }
 
+.highlight {
+  background-color: lightpink;
+}
+
 .defun-head {
   position: sticky;
   top: 0;
@@ -85,13 +89,29 @@ var,
   color: red;
 }
 
+.sysvar {
+  color: darkred;
+}
+
+.comment {
+  padding-left: 1em;
+}
+
 .top-level {
   margin-top: 1em;
   display: block;
   border: solid 1px;
   padding: 1em;
+  min-width: 30ch;
+  max-width: 90ch;
+  overflow: auto;
+}
+
+.contain {
+  width: max-content;
 }
 
 a {
   text-decoration: none;
 }
+

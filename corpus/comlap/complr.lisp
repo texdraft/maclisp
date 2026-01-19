@@ -6,7 +6,7 @@
 ;;;   ****** This is a Read-Only file! (All writes reserved) *******
 ;;;   **************************************************************
 
-(SETQ COMPLRVERNO '#.(let* ((file (caddr (truename infile)))
+(SETQ COMPLRVERNO #.(let* ((file (caddr (truename infile)))
                            (x (readlist (exploden file))))
                           (setq |verno| (cond ((fixp x) file)  ('/936)))))
 
@@ -1777,13 +1777,13 @@
                         (CPUSH (1+ LOC))
                         (MAPC 'OUTPUT 
                               (COND ((= LOC #.(+ 0 (NUMVALAC)))         ;to flush the QUOTE
-                                       '((MULI #.(NUMVALAC) 256.)
-                                         (TSC #.(NUMVALAC) #.(NUMVALAC))
-                                         (ASH #.(+ 1 (NUMVALAC)) -163. #.(NUMVALAC))))
+                                       `((MULI ,(NUMVALAC) 256.)
+                                         (TSC ,(NUMVALAC) ,(NUMVALAC))
+                                         (ASH ,(+ 1 (NUMVALAC)) -163. ,(NUMVALAC))))
                                      ((= LOC #.(+ 1 (NUMVALAC)))
-                                       '((MULI #.(+ 1 (NUMVALAC)) 256.)
-                                         (TSC #.(+ 1 (NUMVALAC)) #.(+ 1 (NUMVALAC)))
-                                         (ASH #.(+ 2 (NUMVALAC)) -163. #.(+ 1 (NUMVALAC)))))
+                                       `((MULI ,(+ 1 (NUMVALAC)) 256.)
+                                         (TSC ,(+ 1 (NUMVALAC)) ,(+ 1 (NUMVALAC)))
+                                         (ASH ,(+ 2 (NUMVALAC)) -163. ,(+ 1 (NUMVALAC)))))
                                      (T (BARF LOC |LOC no good for IFIX - COMFIXFLT|))))
                         (CONT LOC () )
                         (SETMODE LOC ()) 
@@ -2205,7 +2205,7 @@
                     (L/.LE/. (CADR TEM) FXPDL)
                     (L/.LE/. (CADDR TEM) FLPDL))
                (RESTORE LMRSL))
-              ('T (DO Z '(REGACS () NUMACS () REGPDL 0 FXPDL #.(FXP0) FLPDL #.(FLP0))
+              ('T (DO Z `(REGACS () NUMACS () REGPDL 0 FXPDL ,(FXP0) FLPDL ,(FLP0))
                         (CDDR Z)
                         (NULL Z)
                      (DO ((SLOTL (SYMEVAL (CAR Z)) (CDR SLOTL)) (I 0 (1+ I)))
@@ -2313,8 +2313,8 @@
                                  (OUT1 (CAR INST) (CADR INST) LOC)
                                  1)
                            ('T (OUT1 'MOVE #%(NUMVALAC) LOC)
-                              (OUTPUT (COND ((EQ OP 'CALL)         '(PUSHJ P @ 1 #.(NUMVALAC)))
-                                            ('T                        '(JRST 0 @ 1 #.(NUMVALAC)))))
+                              (OUTPUT (COND ((EQ OP 'CALL)         `(PUSHJ P @ 1 ,(NUMVALAC)))
+                                            ('T                        `(JRST 0 @ 1 ,(NUMVALAC)))))
                               (RPLACA ACSMODE (CADR X))
                               #%(NUMVALAC))))
                 #%(ILOCF (CADDR X)) 
@@ -2736,7 +2736,7 @@
           (SETQ V (CAR Y))
 ;          So freeze world at this point
           (SETQ TEM (FREEZE-VAR V 
-                              '(REGACS () NUMACS () REGPDL 0 FXPDL #.(FXP0) FLPDL #.(FLP0)) 
+                              `(REGACS () NUMACS () REGPDL 0 FXPDL ,(FXP0) FLPDL ,(FLP0)) 
                               (CAR CMPVL)
                               () 
                               MODE))          

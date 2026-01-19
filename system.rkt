@@ -10,8 +10,8 @@
 (define lookup-system-variable
   (let ([table (make-hash (map (λ (v)
                                  (cons (car v)
-                                       (Symbol-Info #f
-                                                    (Symbol-Kind 'special-variable
+                                       (Symbol-Info (cdr v)
+                                                    (Symbol-Kind 'special
                                                                  #t)
                                                     (car v)
                                                     (string-downcase (car v))

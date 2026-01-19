@@ -6,7 +6,7 @@
          (struct-out Symbol-Kind))
 
 (struct Symbol-Kind
-  (kind ; unbound, variable, special, function, status, sstatus, property, tag
+  (kind ; unbound, variable, special, function, status, sstatus, property, tag, array
    system?)) ; defined by the system? (just for variables and functions)
 
 (struct Symbol-Info

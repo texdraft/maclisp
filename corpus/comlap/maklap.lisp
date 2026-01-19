@@ -6,7 +6,7 @@
 ;;;   ****** This is a Read-Only file! (All writes reserved) *******
 ;;;   **************************************************************
 
-(SETQ MAKLAPVERNO '#.(let* ((file (caddr (truename infile)))
+(SETQ MAKLAPVERNO #.(let* ((file (caddr (truename infile)))
                            (x (readlist (exploden file))))
                           (setq |verno| (cond ((fixp x) file)  ('/80)))))
 

@@ -167,6 +167,7 @@
         (kw any)
         (break)
         (atom/l any l)
+        (highlight tree)
         (list tree ...)
         (list/broken tree ...)
         (list/group tree ...)

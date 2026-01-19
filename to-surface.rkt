@@ -8,7 +8,8 @@
          "read.rkt"
          nanopass/base)
 
-(provide parse-program)
+(provide parse-program
+         parse-expression)
 
 (define-match-expander LIST
   (syntax-rules ()

@@ -49,7 +49,7 @@
 
 (struct File (name data comments) #:transparent)
 
-(struct Comment (text location) #:transparent)
+(struct Comment (text location [output? #:mutable]) #:transparent)
 (struct Block-Comment (text location) #:transparent)
 
 (struct Symbol (name location) #:transparent)
@@ -173,7 +173,8 @@
           (Comment (token-value t)
                    (positions->srcloc in-name
                                       (position-token-start-pos raw)
-                                      (position-token-end-pos raw)))
+                                      (position-token-end-pos raw))
+                   #f)
           raw)))
   (call-with-input-file in-name
     (λ (in)
