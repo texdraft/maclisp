@@ -5,7 +5,8 @@
          "read.rkt"
          "ncomplr.rkt"
          "system.rkt"
-         "symbol-info.rkt")
+         "symbol-info.rkt"
+         "xref.rkt")
 
 (provide compile)
 
@@ -419,6 +420,59 @@
     [(file ,any (,[e -> e ?] ...) (,comment ...))
      `(file ,any (,e ...) (,comment ...))]))
 
+(define-pass gather-xref! : Line-Breaks (e) -> Line-Breaks ()
+  (definitions
+    (define trace (make-parameter '()))
+    (define suppress (make-parameter #f))
+
+    (define (add! v p kind type tree)
+      (unless (suppress)
+        (match v
+          [(Symbol-Info _ (Symbol-Kind k _) _ _ _)
+           (when (eqv? k kind)
+             (p v type tree (trace)))]
+          [_ (void)])))
+    (define (add-read! x tree)
+      (add! x add-variable-use! 'special 'read tree))
+    (define (add-write! x tree)
+      (add! x add-variable-use! 'special 'write tree))
+    (define (add-bind! x tree)
+      (add! x add-variable-use! 'special 'bind tree))
+
+    (define (add-function-read! f tree)
+      (add! f add-function-use! 'function 'read tree))
+    (define (add-call! f tree)
+      (add! f add-function-use! 'function 'call tree)))
+  (Body : Body (body) -> Body ())
+  (Expression : Expression (original) -> Expression ()
+    [(defun ,f ,i (,x ...) ,body ,l)
+     (for-each (λ (xx)
+                 (add-bind! xx `(defun ,f ,i (,x ...) (begin) ,l)))
+               x)
+     `(defun ,f ,i (,x ...)
+        ,(parameterize ([trace (cons (Symbol-Info-name f) (trace))])
+           (Body body))
+        ,l)]
+    [,x
+     (add-read! x x)
+     original]
+    [(setq [,x ,[e]] ... ,l)
+     (for-each (λ (x e)
+                 (add-write! x `(setq [,x ,e] ,l)))
+               x e)
+     original]
+    [(psetq [,x ,[e]] ... ,l)
+     (for-each (λ (x e)
+                 (add-write! x `(psetq [,x ,e] ,l)))
+               x e)
+     original]
+    [(apply ,f ,e* ... ,l)
+     (for-each (λ (e)
+                 (add-read! e original))
+               e*)
+     (add-call! f original)
+     original]))
+
 (define-pass listify : Line-Breaks (e) -> Listified ()
   (definitions
     (define (q x)
@@ -498,7 +552,17 @@
         `(list/l (kw ,operator) (sequence/group ,x ...) ,l))))
   (Program : Program (e) -> Program ()
     [(program ,any ,[files] ...)
-     `(program ,any ,files ...)])
+     (gather-xref! e)
+     (define (listify-xref xref-pair)
+       (cons (car xref-pair)
+             (map (λ (xref)
+                    (Use (Use-type xref)
+                         (Expression (Use-tree xref))
+                         (Use-trace xref)))
+                  (cdr xref-pair))))
+     (define xrefs (cons (map listify-xref (get-functions))
+                         (map listify-xref (get-variables))))
+     `(program ,any ,xrefs ,files ...)])
   (Expression : Expression (e) -> Tree ()
     [(defun ,f ,i (,x ...) ,[Body : body -> tree] ,l)
      `(list/l (kw ,'defun)

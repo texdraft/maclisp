@@ -7,6 +7,11 @@ body {
   overflow: scroll;
 }
 
+
+h2 {
+  text-align: center;
+}
+
 sub {
   line-height: 0;
 }
@@ -95,6 +100,12 @@ var,
 
 .comment {
   padding-left: 1em;
+}
+
+.line-numbers {
+  text-align: right;
+  margin-right: 1em;
+  width: 3ch;
 }
 
 .top-level {

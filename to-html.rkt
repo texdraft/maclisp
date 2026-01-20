@@ -5,9 +5,13 @@
 (require "languages.rkt"
          "read.rkt"
          "symbol-info.rkt"
+         "xref.rkt"
          nanopass/base)
 
-(provide HTMLify)
+(provide translate)
+
+(define (translate x)
+  (HTMLify (collect-line-numbers x)))
 
 ;; add bars if symbol has / or | or lowercase letter in name
 ;; make numbers subscript
@@ -79,7 +83,81 @@
              continue-with-pos?
              #f #f))))
 
-(define-pass HTMLify : Listified (e) -> * ()
+;; from apropros on racket discord
+(define (slide lst size [step 1])
+  (if (> size (length lst)) (if (null? lst)
+                                lst
+                                (list lst))
+      (cons (take lst size)
+            (slide (drop lst step) size step))))
+
+(define-pass collect-line-numbers : Listified (e) -> Line-Numbers ()
+  (definitions
+    (define (do-group-list ss)
+      (cond [(null? ss)
+             0]
+            [else
+             (define number (length ss))
+             (define (good-group? n)
+               (< (modulo number n) n))
+             (define group-length (cond [(good-group? 5) 5]
+                                        [(good-group? 4) 4]
+                                        [(good-group? 3) 3]
+                                        [else number]))
+             (define w (slide ss group-length group-length))
+             (if (> number 5)
+                 (- (length w) 1)
+                 0)])))
+  (Program : Program (p) -> Program ()
+    [(program ,any ,any1 ,[files] ...)
+     (define (go p)
+       (match p
+         [(cons si xrefs)
+          (cons si (map (λ (x)
+                          (match x
+                            [(Use type tree trace)
+                             (Use type (Tree tree) trace)]))
+                        xrefs))]))
+     `(program ,any
+               ,(cons (map go (car any1))
+                      (map go (cdr any1)))
+               ,files ...)])
+  (File : File (f) -> File ()
+    [(file ,any (,tree ...) (,comment ...))
+     `(file ,any
+            (,(map (λ (x)
+                     (with-output-language (Line-Numbers Top-Level)
+                       `(top (,(with-output-language (Line-Numbers Tree)
+                                 (add-between (build-list (+ (count x) 1)
+                                                          (λ (n)
+                                                            `(atom ,(+ n 1))))
+                                              `(break)))
+                              ...)
+                             ,(Tree x))))
+                   tree)
+             ...)
+            (,comment ...))])
+  (Tree : Tree (e) -> Tree ())
+  (count : Tree (e) -> * ()
+    [(atom ,any) 0]
+    [(atom ,any ,any1) 0]
+    [(atom/l ,any ,l) 0]
+    [(kw ,any) 0]
+    [(break) 1]
+    [(highlight ,tree) (count tree)]
+    [(list ,tree ...) (apply + (map count tree))]
+    [(list/l ,tree ... ,l) (apply + (map count tree))]
+    [(list/broken ,tree ...) (+ (length tree) -1 (apply + (map count tree)))]
+    [(list/group ,tree ...) (do-group-list tree)]
+    [(prefix ,any ,tree) (count tree)]
+    [(tagged ,any ,tree) (+ (count tree) 1)]
+    [(sequence ,tree ...) (apply + (map count tree))]
+    [(sequence/broken ,tree ...) (+ (length tree) -1 (apply + (map count tree)))]
+    [(sequence/group ,tree ...) (do-group-list tree)]
+    [(align ,tree ...) (+ (length tree) -1 (apply + (map count tree)))]
+    [(indent ,tree) (count tree)]))
+
+(define-pass HTMLify : Line-Numbers (e) -> * ()
   (definitions
     (define (comment? k comments l)
       (define comment (findf (λ (c)
@@ -112,13 +190,7 @@
                            (λ (x) (Tree x n comments))
                            lst
                            separator))
-    ;; from apropros on racket discord
-    (define (slide lst size [step 1])
-      (if (> size (length lst)) (if (null? lst)
-                                    lst
-                                    (list lst))
-          (cons (take lst size)
-                (slide (drop lst step) size step))))
+
 
     (define (do-group-list ss count)
       (cond [(null? ss)
@@ -152,39 +224,70 @@
         [(align) #t]
         [else #f])))
   (Program : Program (p) -> * ()
-    [(program ,any ,[File : files -> e] ...)
-     `(html (head (meta [[charset "UTF-8"]])
-                  (title "NCOMPLR")
-                  (link [[rel "stylesheet"]
-                         [href "maclisp.css"]])
-                  (script [[src "code.js"] [defer "true"]]))
-            (body (h1 "NCOMPLR")
-                  (ol [[class "contents"]]
-                      ,@(map (λ (file fs)
-                               (define name (nanopass-case (Listified File)
-                                                           file
-                                                           [(file ,any
-                                                                  (,tree ...)
-                                                                  (,comment ...))
-                                                            any]))
-                               `(li (span "File " (a [[href ,(~a "#" name)]] (code ,name)))
-                                    (details (summary "Show functions")
-                                             ,@(map (λ (x) `(ol ,(Tree x 0 #f)))
-                                                    (filter identity fs)))))
-                             files any))
-                  (section [[class "main"]]
-                           ,@e)))])
+    [(program ,any ,any1 ,[File : files -> e] ...)
+     `((html (head (meta [[charset "UTF-8"]])
+                   (title "NCOMPLR")
+                   (link [[rel "stylesheet"]
+                          [href "maclisp.css"]])
+                   (script [[src "code.js"] [defer "true"]]))
+             (body (h1 "NCOMPLR")
+                   (ol [[class "contents"]]
+                       ,@(map (λ (file)
+                                (define name
+                                  (nanopass-case (Line-Numbers File) file
+                                                 [(file ,any
+                                                        (,top-level ...)
+                                                        (,comment ...))
+                                                  any]))
+                                `(li (span "File " (a [[href ,(~a "#" name)]] (code ,name)))))
+                              files))
+                   (section [[class "main"]]
+                            ,@e)))
+       (html (head (meta [[charset "UTF-8"]])
+                   (title "Index")
+                   (link [[rel "stylesheet"]
+                          [href "maclisp.css"]])
+                   (script [[src "code.js"] [defer "true"]]))
+             (body (h1 "Functions")
+                   (ol [[class "function-index"]]
+                       ,@(map (λ (f)
+                                (match f
+                                  [(cons fsi xrefs)
+                                   `(li (details (summary ,(atom fsi))
+                                                 (ol ,@(map (λ (xref)
+                                                              (match xref
+                                                                [(Use type tree trace)
+                                                                 `(li ,(Tree tree 0 '()))]))
+                                                            xrefs))))]))
+                              (car any1)))
+                   (h2 "Special variables")
+                   (ol [[class "variable-index"]]
+                       ,@(map (λ (v)
+                                (match v
+                                  [(cons vsi xrefs)
+                                   `(li (details (summary ,(atom vsi))
+                                                 (ol ,@(map (λ (xref)
+                                                              (match xref
+                                                                [(Use type tree trace)
+                                                                 `(li ,(Tree tree 0 '()))]))
+                                                            xrefs))))]))
+                              (cdr any1))))))])
   (File : File (f) -> * ()
-    [(file ,any (,tree ...) (,comment ...))
+    [(file ,any (,top-level ...) (,comment ...))
      `(section [[id ,any]]
                (h2 "File " (a [[href ,(~a "#" any)]](code ,any)))
                (div [[class "listing"]]
-                    ,@(add-between (map (λ (x) `(div [[class "top-level"]]
-                                                     (div [[class "contain"]] ,x)))
+                    ,@(add-between (map (λ (x)
+                                          `(div [[class "top-level"]]
+                                                (div [[class "contain"]] ,@x)))
                                         (map (λ (x)
-                                               (Tree x 0 comment))
-                                             tree))
+                                               (Top-Level x comment))
+                                             top-level))
                                    '(br))))])
+  (Top-Level : Top-Level (top-level comments) -> * ()
+    [(top (,tree0 ...) ,tree)
+     `((div [[class "line-numbers"]] ,@(map (λ (x) (Tree x 0 '())) tree0))
+       (div [[class "code"]] ,(Tree tree 0 comments)))])
   (Tree : Tree (t n [comments '()]) -> * ()
     [(atom ,any) (wrap n (atom any))]
     [(atom ,any ,any1)
